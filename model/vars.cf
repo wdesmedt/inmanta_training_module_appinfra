@@ -1,0 +1,8 @@
+import ssh
+
+dns_servers = ["8.8.8.8", "8.8.4.4"]
+mgmt_key = ssh::Key(name="mgmtkey", public_key=std::source("/id_rsa.pub"))
+
+nsot_email = "admin@localhost"
+nsot_key = "Yf_W6aLG6mPF6tL_IfVGhSbL9wz0F-24-AokSrGe4CQ="
+nsot_url = "http://localhost:8990"

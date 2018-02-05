@@ -1,0 +1,18 @@
+import openstack
+import aws
+import redhat
+
+os_provider = openstack::Provider(name="openstack", connection_url=std::get_env("OS_AUTH_URL"),
+                                  username=std::get_env("OS_USERNAME"),
+                                  password=std::get_env("OS_PASSWORD"),
+                                  tenant=std::get_env("OS_PROJECT_NAME"))
+
+os_project = openstack::Project(provider=os_provider, name=os_provider.tenant, description="", enabled=true,
+                                managed=false)
+os_uplink = openstack::Network(provider=os_provider, project=os_project, name="training", managed=false)
+
+os_flavor = openstack::find_flavor(os_provider, 1, 1)
+os_image = openstack::find_image(os_provider, redhat::centos7, "training")
+
+aws_provider = aws::Provider(name="aws", access_key=std::get_env("AWS_ACCESS_KEY_ID"), region=std::get_env("AWS_REGION"),
+                             secret_key=std::get_env("AWS_SECRET_ACCESS_KEY"), availability_zone="a")

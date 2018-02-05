@@ -1,0 +1,126 @@
+import ip
+import app
+import redhat
+
+### Layer 1
+################
+entity AppService:
+    """
+        This entity models the application service offered to the end user.
+    """
+end
+
+implement AppService using std::none
+
+### Layer 2
+################
+entity Site:
+    """
+        A site where the application is deployed
+    """
+    string name
+    tier_n api_instances=1
+    tier_n backend_instances=1
+    tier_n state_instances=1  
+end
+
+index Site(name)
+
+AppService.sites [1:] -- Site.app_service [1]
+"""
+    Each app is hosted on one or more sites.
+"""
+
+### Layer 3
+################
+typedef tier_n as number matching self > 0
+typedef tier_type as string matching self == "api" or self == "backend" or self == "state"
+
+entity Tier:
+    """
+        An application tier at a specific site
+    """
+    string name
+    tier_type type
+    tier_n n_instances
+end
+
+index Tier(site, type)
+
+Site.tiers [0:] -- Tier.site [1]
+Site.api_tier [1] -- Tier
+Site.backend_tier [1] -- Tier
+Site.state_tier [1] -- Tier
+
+Tier.apps [0:] -- app::App
+"""
+    A list of all application instances in this tier
+"""
+
+### Layer 4
+################
+entity Host extends ip::Host:
+    """
+        This entity models a host (vm) for this application. This host will provision a virtual 
+        machine on the target site (openstack, aws, ..)
+    """
+end
+
+# Many modules depend on special hosts implementations. If you create an
+# std::Host or ip::Host subclass, use the std::hostDefaults implementation.
+implement Host using std::hostDefaults
+
+Host.tier [1] -- Tier.instances [0:]
+
+### Implementations
+implementation site for Site:
+    self.api_tier = Tier(site=self, type="api", n_instances=self.api_instances)
+    self.backend_tier = Tier(site=self, type="backend", n_instances=self.backend_instances)
+    self.state_tier = Tier(site=self, type="state", n_instances=self.state_instances)
+end
+
+implementation appConnections for Site:
+    """
+        Add the connections between tiers based on the following rules:
+
+        - each api connects to all backend in same site
+        - each backend connects to all state in same site
+        - each state connects to each state in all sites
+    """
+    for app in self.api_tier.apps:
+        app.connects_to = self.backend_tier.apps
+    end
+
+    for app in self.backend_tier.apps:
+        app.connects_to = self.state_tier.apps
+    end
+
+    for app in self.state_tier.apps:
+        for other in self.state_tier.apps:
+            app.connects_to = other
+        end
+        for site in self.app_service.sites:
+            for other in site.state_tier.apps:
+                app.connects_to = other
+            end
+        end
+    end
+end
+
+implement Site using site, appConnections
+
+implementation tier for Tier:
+    self.name = "{{ site.name }}-{{ type }}"
+    for i in std::sequence(self.n_instances, 1):
+        Host(name="{{ name }}-vm-{{ i }}", tier=self, ip="1.2.3.4")
+    end
+end
+
+implement Tier using tier
+
+implementation hostBase for Host:
+    self.os = redhat::centos7
+    self.tier.apps = app::App(host=self, site=self.tier.site.name, tier=self.tier.name, name=self.name)
+end
+
+implement Host using hostBase
